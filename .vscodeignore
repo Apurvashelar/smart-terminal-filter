@@ -1,0 +1,11 @@
+.vscode/**
+.claude/**
+src/**
+cli/**
+out-cli/**
+out/**/*.map
+node_modules/**
+.gitignore
+tsconfig*.json
+package-lock.json
+*.vsix

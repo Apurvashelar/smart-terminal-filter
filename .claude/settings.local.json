@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(\"/Users/appe/Documents/Vibe-Coding/smart-terminal-filter 3/README.md\":*)"
+    ]
+  }
+}

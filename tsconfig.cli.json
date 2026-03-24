@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "outDir": "out-cli",
+    "rootDir": ".",
+    "lib": ["ES2022"],
+    "sourceMap": false,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "cli/smartlog.ts",
+    "src/logClassifier.ts",
+    "src/filterEngine.ts",
+    "src/stackTraceGrouper.ts",
+    "src/frameworkDetector.ts",
+    "src/ai/provider.ts",
+    "src/ai/logSummarizer.ts",
+    "src/ai/naturalLanguageQuery.ts"
+  ],
+  "exclude": ["node_modules", "out", "out-cli"]
+}
