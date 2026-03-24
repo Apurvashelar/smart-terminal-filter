@@ -3,6 +3,7 @@
   "displayName": "Smart Terminal Filter",
   "description": "Filters terminal noise so you only see errors, warnings, and your own logs. AI-powered error explanation, log summarization, and natural language queries.",
   "version": "0.2.0",
+  "icon": "images/icon.png",
   "publisher": "apurvashelar",
   "repository": {
     "type": "git",
