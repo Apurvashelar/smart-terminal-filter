@@ -63,7 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // --- Data pipeline ---
   interceptor.onCommandStart(() => {
-    engine.clear(); panel.sendClear(); statusBar.resetErrorTracking();
+    engine.clear(true); panel.sendClear(); statusBar.resetErrorTracking();
   });
 
   interceptor.onData(data => {
@@ -75,6 +75,8 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar.updateStats(stats); // handles flash + toast (Feature 3)
     panel.sendStats(stats);       // updates banner (Feature 1)
   });
+  engine.onRetroactiveHide(groupId => panel.sendHideStackGroup(groupId));
+  engine.onRetroactiveHideEntry(lineNumber => panel.sendHideEntry(lineNumber));
 
   // --- Commands ---
   context.subscriptions.push(

@@ -1,11 +1,15 @@
 /**
  * Log Interceptor — hooks into VS Code's terminal system to capture output.
- * 
+ *
  * Uses two strategies:
- *  1. window.onDidWriteTerminalData (proposed API) — captures raw PTY output
- *  2. Shell Integration API — captures command-level output with exit codes
- *  
- * Falls back gracefully if APIs aren't available.
+ *  1. Shell Integration API (onDidStartTerminalShellExecution) — streams
+ *     command output in real-time; fires commandStart callbacks on each new cmd.
+ *  2. window.onDidWriteTerminalData (proposed API) — raw PTY fallback for
+ *     terminals where shell integration is unavailable.
+ *
+ * Only ONE path is active per terminal per command: if the shell integration
+ * stream is running, onDidWriteTerminalData is suppressed for that terminal
+ * to prevent double-processing the same output.
  */
 
 import * as vscode from 'vscode';
@@ -28,8 +32,7 @@ export class LogInterceptor {
   private dataBuffer: Map<string, string> = new Map();
   private flushTimers: Map<string, NodeJS.Timeout> = new Map();
   private pendingClearTerminals: Set<string> = new Set();
-  private lastDataTime: Map<string, number> = new Map();
-  private readonly activityGapMs = 1500; // gap that signals a new command
+  private activeShellExecutions: Set<string> = new Set();
 
   constructor() {}
 
@@ -37,7 +40,7 @@ export class LogInterceptor {
    * Start intercepting terminal output.
    */
   activate(): void {
-    // Strategy 1: Track terminal creation/closure
+    // Track terminal creation/closure
     this.disposables.push(
       vscode.window.onDidOpenTerminal(terminal => {
         this.trackTerminal(terminal);
@@ -49,7 +52,7 @@ export class LogInterceptor {
         this.trackedTerminals.delete(terminal.name);
         this.dataBuffer.delete(terminal.name);
         this.pendingClearTerminals.delete(terminal.name);
-        this.lastDataTime.delete(terminal.name);
+        this.activeShellExecutions.delete(terminal.name);
         const timer = this.flushTimers.get(terminal.name);
         if (timer) {
           clearTimeout(timer);
@@ -61,16 +64,17 @@ export class LogInterceptor {
     // Track existing terminals
     vscode.window.terminals.forEach(t => this.trackTerminal(t));
 
-    // Strategy 2: Shell integration for command-level tracking
+    // Strategy 1: Shell integration — primary data source when available.
+    // Fires commandStart and streams output. Suppresses onDidWriteTerminalData
+    // for the same terminal while the stream is active.
     this.disposables.push(
       vscode.window.onDidStartTerminalShellExecution?.(event => {
         this.onShellExecution(event);
       }) ?? { dispose: () => {} }
     );
 
-    // Fallback: when a command ends, mark terminal as needing a clear so the
-    // next incoming data batch triggers commandStartCallbacks (covers terminals
-    // where onDidStartTerminalShellExecution doesn't fire reliably).
+    // When a command ends, mark terminal for clear so the next command's first
+    // data batch (via onDidWriteTerminalData fallback) triggers commandStart.
     this.disposables.push(
       vscode.window.onDidEndTerminalShellExecution?.(event => {
         if (this.active) {
@@ -79,9 +83,8 @@ export class LogInterceptor {
       }) ?? { dispose: () => {} }
     );
 
-    // Strategy 3: Use onDidWriteTerminalData if available
-    // This is a proposed API — may not be available in stable VS Code.
-    // We use it when available for real-time streaming.
+    // Strategy 2: Raw PTY fallback — used when shell integration is not active.
+    // Skipped for terminals currently handled by the shell integration stream.
     try {
       const onWrite = (vscode.window as any).onDidWriteTerminalData;
       if (onWrite) {
@@ -93,7 +96,7 @@ export class LogInterceptor {
         );
       }
     } catch {
-      // Not available — we'll rely on shell integration
+      // Not available — rely on shell integration only
     }
   }
 
@@ -101,101 +104,51 @@ export class LogInterceptor {
     const name = terminal.name;
     if (this.trackedTerminals.has(name)) { return; }
     this.trackedTerminals.add(name);
-
-    // If shell integration is available, listen for command completions
-    if (terminal.shellIntegration) {
-      this.attachShellIntegration(terminal);
-    }
-
-    // Also listen for shell integration activation
-    const disposable = vscode.window.onDidChangeTerminalShellIntegration?.(event => {
-      if (event.terminal === terminal) {
-        this.attachShellIntegration(terminal);
-      }
-    });
-
-    if (disposable) {
-      this.disposables.push(disposable);
-    }
-  }
-
-  private attachShellIntegration(terminal: vscode.Terminal): void {
-    const si = terminal.shellIntegration;
-    if (!si) { return; }
-
-    // Listen for command executions
-    try {
-      this.disposables.push(
-        vscode.window.onDidEndTerminalShellExecution?.(event => {
-          if (!this.active) { return; }
-          if (event.terminal === terminal) {
-            // Read the command output via the shell integration stream
-            this.readShellExecution(event);
-          }
-        }) ?? { dispose: () => {} }
-      );
-    } catch {
-      // Shell integration events not available
-    }
-  }
-
-  private async readShellExecution(event: any): Promise<void> {
-    try {
-      const execution = event.execution;
-      if (!execution) { return; }
-
-      // The shellExecution has a read() stream
-      const stream = execution.read?.();
-      if (!stream) { return; }
-
-      let fullOutput = '';
-      for await (const data of stream) {
-        fullOutput += data;
-      }
-
-      if (fullOutput) {
-        this.emit({
-          terminalName: event.terminal.name,
-          data: fullOutput,
-          timestamp: Date.now(),
-        });
-      }
-    } catch {
-      // Stream reading failed
-    }
   }
 
   private async onShellExecution(event: any): Promise<void> {
-    // onDidStartTerminalShellExecution fired — cancel the pending-clear fallback
-    // so flushBuffer doesn't double-clear when shell integration is fully active.
+    // Cancel any pending-clear from a previous command end so flushBuffer
+    // doesn't fire a second commandStart when shell integration is active.
     this.pendingClearTerminals.delete(event.terminal.name);
+
     // Notify listeners that a new command started
     for (const cb of this.commandStartCallbacks) {
       try { cb(event.terminal.name); } catch {}
     }
-    // Track active executions
+
     try {
       const stream = event.execution?.read?.();
       if (!stream) { return; }
 
-      for await (const data of stream) {
-        if (!this.active) { return; }
-        this.emit({
-          terminalName: event.terminal.name,
-          data,
-          timestamp: Date.now(),
-        });
+      // Mark this terminal as handled by shell integration so that
+      // onDidWriteTerminalData bufferData calls are suppressed.
+      this.activeShellExecutions.add(event.terminal.name);
+      try {
+        for await (const data of stream) {
+          if (!this.active) { return; }
+          this.emit({
+            terminalName: event.terminal.name,
+            data,
+            timestamp: Date.now(),
+          });
+        }
+      } finally {
+        this.activeShellExecutions.delete(event.terminal.name);
       }
     } catch {
-      // Not available
+      this.activeShellExecutions.delete(event.terminal.name);
     }
   }
 
   /**
    * Buffer incoming data and flush in batches to avoid overwhelming the UI
    * with rapid small writes (terminals write character by character sometimes).
+   * Skipped entirely when the shell integration stream is active for this terminal.
    */
   private bufferData(terminalName: string, data: string): void {
+    // Shell integration is handling this terminal — don't double-process
+    if (this.activeShellExecutions.has(terminalName)) { return; }
+
     const existing = this.dataBuffer.get(terminalName) || '';
     this.dataBuffer.set(terminalName, existing + data);
 
@@ -216,28 +169,20 @@ export class LogInterceptor {
     this.dataBuffer.delete(terminalName);
     this.flushTimers.delete(terminalName);
 
-    const now = Date.now();
-    const last = this.lastDataTime.get(terminalName) ?? 0;
-    const gap = now - last;
-
-    // Fire commandStart if shell integration signalled it OR if there has been
-    // a long enough pause since the last output (covers terminals without
-    // shell integration — any gap ≥ activityGapMs means a new command ran).
+    // Fire commandStart only when shell integration signalled a new command
+    // (avoids false clears mid-build for long-running tools like Maven/Gradle).
     const pendingShellClear = this.pendingClearTerminals.has(terminalName) && data.trim().length > 3;
-    const gapClear = last > 0 && gap >= this.activityGapMs;
-
-    if (pendingShellClear || gapClear) {
+    if (pendingShellClear) {
       this.pendingClearTerminals.delete(terminalName);
       for (const cb of this.commandStartCallbacks) {
         try { cb(terminalName); } catch {}
       }
     }
 
-    this.lastDataTime.set(terminalName, now);
     this.emit({
       terminalName,
       data,
-      timestamp: now,
+      timestamp: Date.now(),
     });
   }
 
@@ -284,6 +229,6 @@ export class LogInterceptor {
     this.flushTimers.forEach(t => clearTimeout(t));
     this.flushTimers.clear();
     this.pendingClearTerminals.clear();
-    this.lastDataTime.clear();
+    this.activeShellExecutions.clear();
   }
 }

@@ -46,6 +46,8 @@ export class WebviewPanel implements vscode.WebviewViewProvider {
   sendErrorExplanation(explanation: any): void { this.post({ type: 'errorExplanation', explanation }); }
   sendLogSummary(summary: any): void { this.post({ type: 'logSummary', summary }); }
   sendQueryResult(result: any): void { this.post({ type: 'queryResult', result }); }
+  sendHideStackGroup(groupId: string): void { this.post({ type: 'hideStackGroup', groupId }); }
+  sendHideEntry(lineNumber: number): void { this.post({ type: 'hideEntry', lineNumber }); }
 
   private post(message: any): void {
     if (this.view) { this.view.webview.postMessage(message); }
@@ -204,7 +206,7 @@ window.addEventListener('message',function(ev){
   var m=ev.data;
   switch(m.type){
     case 'addEntry':add(m.entry);break;
-    case 'bulkEntries':m.entries.forEach(function(e){add(e)});break;
+    case 'bulkEntries':entries=[];C.innerHTML='';E.style.display='flex';C.appendChild(E);m.entries.forEach(function(e){add(e)});break;
     case 'updateStats':uStats(m.stats);break;
     case 'updateVerbosity':document.getElementById('verb').value=m.level;document.getElementById('verb-l').textContent=m.level;break;
     case 'updateFrameworks':break;
@@ -213,6 +215,16 @@ window.addEventListener('message',function(ev){
     case 'errorExplanation':rExpl(m.explanation);break;
     case 'logSummary':rSumm(m.summary);break;
     case 'queryResult':rQuery(m.result);break;
+    case 'hideStackGroup':
+      for(var i=0;i<entries.length;i++){if(entries[i].stackGroupId===m.groupId){entries[i].visible=false;}}
+      var bd=document.getElementById('sgb-'+m.groupId);
+      if(bd&&bd.parentNode){bd.parentNode.remove();}
+      break;
+    case 'hideEntry':
+      for(var i=0;i<entries.length;i++){if(entries[i].lineNumber===m.lineNumber){entries[i].visible=false;}}
+      var el=C.querySelector('[data-linenum="'+m.lineNumber+'"]');
+      if(el){el.remove();}
+      break;
   }
 });
 
@@ -237,6 +249,7 @@ function filt(e){
 
 function mkLine(e){
   var d=document.createElement('div');
+  d.setAttribute('data-linenum',e.lineNumber);
   d.className='log-line l-'+e.level;
   if(e.isStackTraceLine)d.classList.add('stack');
   var h='<span class="ln">'+e.lineNumber+'</span>';

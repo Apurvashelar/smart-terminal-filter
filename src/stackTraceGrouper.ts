@@ -25,6 +25,7 @@ const STACK_START_PATTERNS: RegExp[] = [
   /^thread\s+'.*'\s+panicked\s+at/,         // Rust
   /^Unhandled rejection/i,
   /^fatal error:/i,
+  /^\[ERROR\]\s+\S+\.java:\[\d+,\d+\]/,   // Maven/javac file reference: [ERROR] File.java:[26,6]
 ];
 
 // Patterns that continue a stack trace
@@ -41,6 +42,9 @@ const STACK_CONTINUE_PATTERNS: RegExp[] = [
   /^\s+at\s+Module\./,
   /^\s+at\s+async\s/,
   /^\s+at\s+process\./,
+  // javac compiler diagnostics (follow a Maven file reference header)
+  /^\s+(symbol|location)\s*:/,            // "  symbol:   class Foo"
+  /^\[ERROR\]\s+(symbol|location)\s*:/,   // "[ERROR]   symbol:   class Foo"
 ];
 
 export class StackTraceGrouper {

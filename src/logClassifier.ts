@@ -43,7 +43,9 @@ export interface ClassifiedLine {
   timestamp?: string;
   source?: string;           // File:line if detected
   isStackTraceLine: boolean;
+  isUserCodeFrame: boolean;  // True if frame should be shown (user code or diagnostic detail)
   isFirstOfGroup: boolean;   // True if this starts a new stack trace group
+  isAnsiRed: boolean;        // True if the raw line contains ANSI red color codes
   framework?: string;        // Which framework produced this line
   lineNumber: number;        // Global line counter
   terminalName: string;
@@ -68,7 +70,7 @@ const ERROR_PATTERNS: RegExp[] = [
   /npm ERR!/,
   /\berror TS\d+/,                      // TypeScript errors
   /\bCompilation failed\b/i,
-  /\bBuild FAILED\b/i,
+  /\bBuild (FAIL(ED|URE))\b/i,
   /\b[Ee]xited with code [^0]\d*/,      // Non-zero exit codes
   /\bProcess exited with code [^0]\d*/i, // Process exit codes
   /Cannot (find|read|resolve|GET)\b/i,
@@ -131,6 +133,23 @@ const STACK_TRACE_PATTERNS: RegExp[] = [
   /^\s+\d+:\s+0x[0-9a-f]+\s+-\s+/,     // Generic backtrace
   /Caused by:/i,
   /^\s+\.\.\.\s+\d+\s+more$/,           // Java "... N more"
+  // javac compiler diagnostics (Maven compilation errors)
+  /^\s+(symbol|location)\s*:/,          // "  symbol:   class Foo"
+  /^\[ERROR\]\s+(symbol|location)\s*:/, // "[ERROR]   symbol:   class Foo"
+];
+
+// Build-tool boilerplate patterns — lines that should be downgraded from ERROR even though
+// they carry an [ERROR] or [INFO] prefix containing the word "error". Checked BEFORE
+// ERROR_PATTERNS in detectLevel() to prevent false elevation.
+const BUILD_TOOL_BOILERPLATE_PATTERNS: RegExp[] = [
+  /^\[ERROR\]\s*$/,                                                // Empty [ERROR] line
+  /^\[ERROR\]\s*-+\s*$/,                                          // [ERROR] ---- separator
+  /^\[ERROR\]\s*->\s*\[Help \d+\]/,                               // Maven -> [Help 1]
+  /^\[ERROR\]\s*(To see the full stack trace|Re-run Maven)/i,     // Maven re-run hints
+  /^\[ERROR\]\s*For more information about the errors/i,          // Maven help suggestion
+  /^\[ERROR\]\s*\[Help \d+\]\s*https?:\/\//,                     // Maven help URLs
+  /^\[INFO\]\s+\d+\s+errors?\b/i,                                 // Maven "[INFO] 1 error"
+  /^\[ERROR\]\s+COMPILATION ERROR\s*:/i,                          // Maven section header (not red)
 ];
 
 // Framework banner / noise patterns (high noise score)
@@ -171,6 +190,15 @@ const FRAMEWORK_NOISE_PATTERNS: RegExp[] = [
   // Create React App
   /^Compiled (successfully|with warnings)/,
   /^You can now view/,
+  // Maven / build-tool boilerplate (mirrors BUILD_TOOL_BOILERPLATE_PATTERNS for scoring)
+  /^\[ERROR\]\s*$/,
+  /^\[ERROR\]\s*-+\s*$/,
+  /^\[ERROR\]\s*->\s*\[Help \d+\]/,
+  /^\[ERROR\]\s*(To see the full stack trace|Re-run Maven)/i,
+  /^\[ERROR\]\s*For more information about the errors/i,
+  /^\[ERROR\]\s*\[Help \d+\]\s*https?:\/\//,
+  /^\[INFO\]\s+\d+\s+errors?\b/i,
+  /^\[ERROR\]\s+COMPILATION ERROR\s*:/i,
 ];
 
 // Timestamp patterns to extract
@@ -179,9 +207,14 @@ const TIMESTAMP_REGEX = /\b(\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+
 // Source file:line patterns
 const SOURCE_FILE_REGEX = /(?:at\s+)?(?:\()?([^\s()]+\.(js|ts|jsx|tsx|py|rb|java|go|rs|cs|cpp|c|php)):(\d+)(?::(\d+))?(?:\))?/;
 const PYTHON_SOURCE_REGEX = /File\s+"([^"]+\.py)",\s+line\s+(\d+)/;
+// Maven/javac format: File.java:[line,col]
+const MAVEN_SOURCE_REGEX = /([^\s()]+\.java):\[(\d+),(\d+)\]/;
 
 // ANSI escape code stripper
 const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[@-~]/g;
+
+// Detects ANSI foreground red (31) or bright red (91) — the terminal is displaying this line in red
+const ANSI_RED_REGEX = /\x1b\[(?:\d+;)*(?:31|91)(?:m|;)/;
 
 // ---------------------------------------------------------------------------
 // Classifier
@@ -192,6 +225,10 @@ export class LogClassifier {
   private customNoisePatterns: RegExp[] = [];
   private customSignalPatterns: RegExp[] = [];
   private inStackTraceByTerminal: Map<string, boolean> = new Map();
+
+  private isInternalPath(source: string): boolean {
+    return /node_modules|node:internal|site-packages|Python\.framework|\.pyc|jdk\.internal|sun\.reflect|com\.sun\./i.test(source);
+  }
 
   setCustomPatterns(noise: string[], signal: string[]): void {
     this.customNoisePatterns = noise
@@ -204,12 +241,14 @@ export class LogClassifier {
 
   classify(raw: string, terminalName: string): ClassifiedLine {
     this.lineCounter++;
+    const isAnsiRed = ANSI_RED_REGEX.test(raw);
     const cleaned = raw.replace(ANSI_REGEX, '').trimEnd();
 
     // Extract metadata
     const timestampMatch = cleaned.match(TIMESTAMP_REGEX);
     const sourceMatch = cleaned.match(SOURCE_FILE_REGEX);
     const pythonSourceMatch = !sourceMatch ? cleaned.match(PYTHON_SOURCE_REGEX) : null;
+    const mavenSourceMatch = !sourceMatch && !pythonSourceMatch ? cleaned.match(MAVEN_SOURCE_REGEX) : null;
 
     // Classify
     const level = this.detectLevel(cleaned);
@@ -227,6 +266,24 @@ export class LogClassifier {
       this.inStackTraceByTerminal.set(terminalName, false);
     }
 
+    const source = sourceMatch
+      ? `${sourceMatch[1]}:${sourceMatch[3]}${sourceMatch[4] ? ':' + sourceMatch[4] : ''}`
+      : pythonSourceMatch
+        ? `${pythonSourceMatch[1]}:${pythonSourceMatch[2]}`
+        : mavenSourceMatch
+          ? `${mavenSourceMatch[1]}:${mavenSourceMatch[2]}:${mavenSourceMatch[3]}`
+          : undefined;
+
+    const isUserCodeFrame = isStackTraceLine && (
+      // Diagnostic details (symbol:, location:, Caused by:, "... N more") — always relevant
+      /^\s*(Caused by:|symbol\s*:|location\s*:|\.{3}\s*\d+\s+more)/i.test(cleaned) ||
+      /^\[ERROR\]\s*(symbol|location)\s*:/i.test(cleaned) ||
+      // Frame has a resolvable user-code source (not framework internals)
+      (source != null && !this.isInternalPath(source)) ||
+      // Non-"at" stack patterns without source (Python File:, Go, Rust) — show by default
+      (!source && !/^\s+at\s+/.test(cleaned))
+    );
+
     return {
       raw,
       cleaned,
@@ -234,13 +291,11 @@ export class LogClassifier {
       category,
       noiseScore,
       timestamp: timestampMatch ? (timestampMatch[1] || timestampMatch[2]) : undefined,
-      source: sourceMatch
-        ? `${sourceMatch[1]}:${sourceMatch[3]}${sourceMatch[4] ? ':' + sourceMatch[4] : ''}`
-        : pythonSourceMatch
-          ? `${pythonSourceMatch[1]}:${pythonSourceMatch[2]}`
-          : undefined,
+      source,
       isStackTraceLine,
+      isUserCodeFrame,
       isFirstOfGroup,
+      isAnsiRed,
       lineNumber: this.lineCounter,
       terminalName,
       receivedAt: Date.now(),
@@ -252,6 +307,9 @@ export class LogClassifier {
 
     // Custom signal patterns always get USER level (highest priority)
     if (this.customSignalPatterns.some(p => p.test(line))) { return LogLevel.USER; }
+
+    // Build-tool boilerplate — downgrade before ERROR_PATTERNS fires on [ERROR] prefix
+    if (BUILD_TOOL_BOILERPLATE_PATTERNS.some(p => p.test(line))) { return LogLevel.UNKNOWN; }
 
     // Error check
     if (ERROR_PATTERNS.some(p => p.test(line))) { return LogLevel.ERROR; }

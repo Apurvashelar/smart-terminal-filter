@@ -76,6 +76,16 @@ python app.py 2>&1 | smartlog --summary
 
 ---
 
+## Demo
+
+### Error Detection
+![Error Detection Demo](images/ErrorMessageDemo.gif)
+
+### Success State
+![Success State Demo](images/SuccessMessageDemo.gif)
+
+---
+
 ## Installation
 
 Install from the VS Code Marketplace:
