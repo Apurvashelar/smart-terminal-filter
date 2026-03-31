@@ -78,7 +78,7 @@ When new errors hit the terminal:
 - Toast notifications are debounced to at most one per 5 seconds
 
 ### Error Sound Alert
-When a terminal command fails with errors, an audio alert plays automatically — so you know something went wrong even when the terminal is off-screen. Disable with `smartTerminal.errorSound: false`.
+When a terminal command fails with errors, an audio alert plays automatically - so you know something went wrong even when the terminal is off-screen. Disable with `smartTerminal.errorSound: false`.
 
 ### Framework Auto-Detection
 Detects your project type from `package.json`, `manage.py`, `pom.xml`, `go.mod`, and other config files, then applies the right noise/signal rules automatically. Supported:
@@ -125,7 +125,7 @@ After installation, five items appear in the VS Code status bar (bottom-left):
 
 | Button | What it shows | Click action |
 |---|---|---|
-| **○ Smart Terminal** | Command status icon — idle / running / success / warning / error. Background turns red on error, yellow on warning, green on success. Flashes red when new errors are detected. | Opens the filtered log panel |
+| **○ Smart Terminal** | Command status icon - idle / running / success / warning / error. Background turns red on error, yellow on warning, green on success. Flashes red when new errors are detected. | Opens the filtered log panel |
 | **$(filter) L2: +Warnings** | Current verbosity level | Opens a quick-pick to change verbosity (1–5) |
 | **$(error) 3  $(output) 15/200  $(eye-closed) 185 hidden** | Error count, warning count, visible vs. total lines, noise hidden. Background matches severity. | Opens the filtered log panel |
 | **$(debug-start) Capturing** | Whether log capture is active. Shows **Paused** with a yellow background when paused. | Toggles capture on / off |
