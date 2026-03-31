@@ -220,6 +220,26 @@ export class LogInterceptor {
     return Array.from(this.trackedTerminals);
   }
 
+  /**
+   * Inject data directly into the pipeline — used by custom PTY terminals
+   * (e.g. AI Smart Terminal) whose output is never seen by onDidWriteTerminalData.
+   */
+  injectData(terminalName: string, data: string): void {
+    if (!this.active) { return; }
+    this.emit({ terminalName, data, timestamp: Date.now() });
+  }
+
+  /**
+   * Fire commandStart callbacks directly — used by custom PTY terminals to
+   * trigger panel clear + engine reset when a new command begins executing.
+   */
+  injectCommandStart(terminalName: string): void {
+    if (!this.active) { return; }
+    for (const cb of this.commandStartCallbacks) {
+      try { cb(terminalName); } catch {}
+    }
+  }
+
   dispose(): void {
     this.active = false;
     this.callbacks = [];

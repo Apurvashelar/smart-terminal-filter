@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { FilterStats, CommandStatus, VerbosityLevel } from './filterEngine';
+import { playErrorSound } from './soundNotifier';
 
 const VERBOSITY_LABELS: Record<number, string> = {
   1: '$(filter) L1: Errors only',
@@ -24,6 +25,7 @@ export class StatusBarController {
   private verbosityItem: vscode.StatusBarItem;
   private statsItem: vscode.StatusBarItem;
   private captureItem: vscode.StatusBarItem;
+  private aiTerminalItem: vscode.StatusBarItem;
   private capturing = true;
 
   // Toast debounce state
@@ -31,6 +33,7 @@ export class StatusBarController {
   private toastDebounceMs = 5000;
   private hasShownOutputToast = false;
   private previousErrorCount = 0;
+  private previousCommandStatus: CommandStatus = 'idle';
 
   // Flash state
   private flashTimer: NodeJS.Timeout | null = null;
@@ -38,8 +41,8 @@ export class StatusBarController {
   constructor() {
     this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
     this.statusItem.command = 'smartTerminal.openPanel';
-    this.statusItem.tooltip = 'Smart Terminal \u2014 click to open filtered panel';
-    this.statusItem.text = `${STATUS_ICONS.idle} Smart Terminal`;
+    this.statusItem.tooltip = 'Smart AI Filter \u2014 click to open filtered panel';
+    this.statusItem.text = `${STATUS_ICONS.idle} Smart AI Filter`;
     this.statusItem.show();
 
     this.verbosityItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -49,13 +52,19 @@ export class StatusBarController {
 
     this.statsItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
     this.statsItem.command = 'smartTerminal.openPanel';
-    this.statsItem.tooltip = 'Click to open Smart Terminal panel';
+    this.statsItem.tooltip = 'Click to open Smart AI Filter panel';
     this.statsItem.show();
 
     this.captureItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
     this.captureItem.command = 'smartTerminal.toggleCapture';
     this.captureItem.tooltip = 'Toggle log capture';
     this.captureItem.show();
+
+    this.aiTerminalItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
+    this.aiTerminalItem.command = 'smartTerminal.openAITerminal';
+    this.aiTerminalItem.text = '$(sparkle) Smart AI Terminal';
+    this.aiTerminalItem.tooltip = 'Open AI Terminal — type in plain English, get shell commands';
+    this.aiTerminalItem.show();
 
     this.updateVerbosity(2);
     this.updateCapture(true);
@@ -91,8 +100,17 @@ export class StatusBarController {
 
     // --- Command status icon ---
     const status = stats.commandStatus || 'idle';
-    this.statusItem.text = `${STATUS_ICONS[status]} Smart Terminal`;
-    this.statusItem.tooltip = stats.commandStatusMessage || 'Smart Terminal';
+
+    // --- Sound notification on success transition ---
+    if (status === 'error' && this.previousCommandStatus !== 'error') {
+      const config = vscode.workspace.getConfiguration('smartTerminal');
+      if (config.get<boolean>('errorSound') !== false) {
+        playErrorSound();
+      }
+    }
+    this.previousCommandStatus = status;
+    this.statusItem.text = `${STATUS_ICONS[status]} Smart AI Filter`;
+    this.statusItem.tooltip = stats.commandStatusMessage || 'Smart AI Filter';
 
     if (status === 'error') {
       this.statusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
@@ -121,7 +139,7 @@ export class StatusBarController {
         this.lastToastTime = now;
         const newCount = stats.errors - this.previousErrorCount;
         this.showToast(
-          `Smart Terminal: ${newCount === 1 ? 'Error' : newCount + ' errors'} detected in terminal output`,
+          `Smart AI Filter: ${newCount === 1 ? 'Error' : newCount + ' errors'} detected in terminal output`,
           true
         );
       }
@@ -130,7 +148,7 @@ export class StatusBarController {
       if (now - this.lastToastTime > this.toastDebounceMs) {
         this.hasShownOutputToast = true;
         this.lastToastTime = now;
-        this.showToast('Smart Terminal: New output detected', false);
+        this.showToast('Smart AI Filter: New output detected', false);
       }
     }
 
@@ -159,12 +177,12 @@ export class StatusBarController {
   }
 
   /**
-   * Show a toast notification with "Open Smart Terminal" action.
+   * Show a toast notification with "Open Smart AI Filter" action.
    */
   private showToast(message: string, isError: boolean): void {
     const showFn = isError ? vscode.window.showErrorMessage : vscode.window.showInformationMessage;
-    showFn(message, 'Open Smart Terminal').then(action => {
-      if (action === 'Open Smart Terminal') {
+    showFn(message, 'Open Smart AI Filter').then(action => {
+      if (action === 'Open Smart AI Filter') {
         vscode.commands.executeCommand('smartTerminal.openPanel');
       }
     });
@@ -180,8 +198,9 @@ export class StatusBarController {
 
   resetErrorTracking(): void {
     this.previousErrorCount = 0;
+    this.previousCommandStatus = 'idle';
     this.hasShownOutputToast = false;
-    this.statusItem.text = `${STATUS_ICONS.idle} Smart Terminal`;
+    this.statusItem.text = `${STATUS_ICONS.idle} Smart AI Filter`;
     this.statusItem.backgroundColor = undefined;
     this.statusItem.color = undefined;
     this.statsItem.backgroundColor = undefined;
@@ -194,5 +213,6 @@ export class StatusBarController {
     this.verbosityItem.dispose();
     this.statsItem.dispose();
     this.captureItem.dispose();
+    this.aiTerminalItem.dispose();
   }
 }

@@ -315,7 +315,7 @@ showAIP('Error explanation',h)}
 function rSumm(s){aiL.classList.remove('visible');var sv=safeStat(s.status);var h='<span class="badge '+sv+'">'+sv.toUpperCase()+'</span> <p>'+esc(s.tldr||'')+'</p>';
 if(s.keyEvents&&s.keyEvents.length>0){h+='<h3>Key events</h3><ul style="margin:3px 0;padding-left:16px">';s.keyEvents.forEach(function(e){h+='<li style="font-size:10px;margin:1px 0">'+esc(e)+'</li>'});h+='</ul>'}
 showAIP('Log summary',h)}
-function rQuery(r){aiL.classList.remove('visible');var h='<div style="font-size:9px;opacity:.5">Found <strong>'+r.matchedLines.length+'</strong> of '+r.totalScanned+(r.usedAI?' \\u00B7 AI':'')+' \\u00B7 '+(r.durationMs||0)+'ms</div>';
+function rQuery(r){aiL.classList.remove('visible');var h='<div style="font-size:9px;opacity:.5">Found <strong>'+r.matchedLines.length+'</strong> of '+r.totalScanned+(r.usedAI?' \u00B7 AI':'')+' \u00B7 '+(r.durationMs||0)+'ms</div>';
 if(r.conversationalResponse){h+='<p style="font-size:11px;line-height:1.6;white-space:pre-wrap">'+esc(r.conversationalResponse)+'</p>';}else{h+='<p style="font-size:10px;opacity:.6">'+esc(r.explanation||'')+'</p>';}
 if(r.matchedLines&&r.matchedLines.length>0){var mx=Math.min(r.matchedLines.length,60);h+='<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:3px;padding:1px 0">';
 for(var i=0;i<mx;i++){var l=r.matchedLines[i];h+='<div class="log-line l-'+(l.level||'unknown')+'" style="font-size:10px;padding:1px 6px"><span class="ln">'+(l.lineNumber||'')+'</span><span class="lc">'+esc(l.cleaned||'')+'</span></div>'}

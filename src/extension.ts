@@ -14,7 +14,9 @@ import { StatusBarController } from './statusBar';
 import { AIProvider, AIProviderConfig } from './ai/provider';
 import { ErrorExplainer } from './ai/errorExplainer';
 import { LogSummarizer } from './ai/logSummarizer';
+import { CommandGenerator } from './ai/commandGenerator';
 import { NaturalLanguageQuery } from './ai/naturalLanguageQuery';
+import { SmartTerminal } from './smartTerminal';
 
 let interceptor: LogInterceptor;
 let engine: FilterEngine;
@@ -23,6 +25,7 @@ let statusBar: StatusBarController;
 let aiProvider: AIProvider | null = null;
 let errorExplainer: ErrorExplainer | null = null;
 let logSummarizer: LogSummarizer | null = null;
+let commandGenerator: CommandGenerator | null = null;
 let nlQuery: NaturalLanguageQuery | null = null;
 let extensionContext: vscode.ExtensionContext;
 
@@ -133,6 +136,19 @@ export function activate(context: vscode.ExtensionContext): void {
       panel.sendAIStatus(false);
       vscode.window.showInformationMessage('Smart Terminal: API key cleared.');
     }),
+    vscode.commands.registerCommand('smartTerminal.openAITerminal', () => {
+      const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.env.HOME || process.env.USERPROFILE || '';
+      const smartTerm = new SmartTerminal(commandGenerator, wsRoot,
+        (data) => interceptor.injectData('Smart AI Terminal', data),
+        () => interceptor.injectCommandStart('Smart AI Terminal')
+      );
+      const terminal = vscode.window.createTerminal({
+        name: 'Smart AI Terminal',
+        pty: smartTerm,
+        iconPath: new vscode.ThemeIcon('sparkle'),
+      });
+      terminal.show();
+    }),
     vscode.commands.registerCommand('smartTerminal.explainError', async () => {
       if (!errorExplainer) {
         const ok = await promptForApiKey(context);
@@ -159,7 +175,6 @@ export function activate(context: vscode.ExtensionContext): void {
       const question = await vscode.window.showInputBox({ prompt: 'Ask about your logs', placeHolder: 'e.g., "show me slow database queries"' });
       if (!question) return;
       const allLines = engine.getAllEntries().map(e => e.line);
-      if (allLines.length === 0) { vscode.window.showInformationMessage('No logs to query.'); return; }
       panel.show(); panel.sendAILoading(`Searching: "${question}"...`);
       const qe = nlQuery || new NaturalLanguageQuery();
       const result = await qe.query(question, allLines);
@@ -230,12 +245,13 @@ async function initializeAI(config: vscode.WorkspaceConfiguration, ctx: vscode.E
   const baseUrl = config.get<string>('ai.baseUrl') || '';
   if (provider !== 'ollama' && !apiKey) {
     aiProvider = null; errorExplainer = null; logSummarizer = null;
-    nlQuery = new NaturalLanguageQuery(); return;
+    commandGenerator = null; nlQuery = new NaturalLanguageQuery(); return;
   }
   const cfg: AIProviderConfig = { provider: provider as any, apiKey: apiKey || undefined, model: model || undefined, baseUrl: baseUrl || undefined };
   aiProvider = new AIProvider(cfg);
   errorExplainer = new ErrorExplainer(aiProvider);
   logSummarizer = new LogSummarizer(aiProvider);
+  commandGenerator = new CommandGenerator(aiProvider);
   nlQuery = new NaturalLanguageQuery(aiProvider);
 }
 

@@ -24,7 +24,6 @@ export class NaturalLanguageQuery {
 
   async query(question: string, allLines: ClassifiedLine[]): Promise<QueryResult> {
     const start = Date.now();
-    // Route question-style queries to conversational AI first
     if (QUESTION_PATTERN.test(question) && this.ai) {
       return this.aiConversation(question, allLines, start);
     }

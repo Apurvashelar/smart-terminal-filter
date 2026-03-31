@@ -25,7 +25,7 @@
 import * as readline from 'readline';
 import { LogClassifier, LogLevel, ClassifiedLine } from '../src/logClassifier';
 import { FilterEngine, VerbosityLevel } from '../src/filterEngine';
-import { NaturalLanguageQuery } from '../src/ai/naturalLanguageQuery';
+
 
 // ---------------------------------------------------------------------------
 // ANSI color codes
@@ -210,11 +210,9 @@ async function main(): Promise<void> {
     );
   }
 
-  // Prepare NL query filter if specified
-  let nlQueryEngine: NaturalLanguageQuery | null = null;
+  // Prepare query filter if specified
   let queryTerms: RegExp | null = null;
   if (opts.query) {
-    nlQueryEngine = new NaturalLanguageQuery();
     // Pre-compute a simple regex for fast line-by-line matching
     const words = opts.query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     if (words.length > 0) {
@@ -300,13 +298,10 @@ async function main(): Promise<void> {
       process.stderr.write('\n');
     }
 
-    // Run NL query on full buffer if specified
-    if (opts.query && nlQueryEngine && !opts.json) {
-      const allLines = engine.getAllEntries().map(e => e.line);
-      const result = await nlQueryEngine.query(opts.query, allLines);
-
+    // Print query match summary if specified
+    if (opts.query && !opts.json) {
       process.stderr.write(`${C.magenta}${C.bold}── Query: "${opts.query}" ──${C.reset}\n`);
-      process.stderr.write(`  ${result.matchedLines.length} matches | ${result.explanation}\n\n`);
+      process.stderr.write(`  Filtered by keyword matching.\n\n`);
     }
   });
 }

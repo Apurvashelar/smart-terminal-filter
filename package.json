@@ -1,13 +1,13 @@
 {
   "name": "smart-terminal-filter-pro",
-  "displayName": "Smart Terminal Filter - Pro",
-  "description": "Filters terminal noise so you only see errors, warnings, and your own logs. AI-powered error explanation, log summarization, and natural language queries.",
+  "displayName": "Smart AI Terminal & Logs Filter",
+  "description": "AI-powered terminal suite: filters terminal noise to show only errors, warnings, and your logs — plus a natural language AI terminal for shell command generation.",
   "version": "0.2.0",
   "icon": "images/icon.png",
   "publisher": "apurvashelar",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Apurvashelar/smart-terminal-filter"
+    "url": "https://github.com/Apurvashelar/smart-AI-terminal-and-logs-filter"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -33,50 +33,55 @@
     "commands": [
       {
         "command": "smartTerminal.openPanel",
-        "title": "Smart Terminal: Open Filtered Log Panel"
+        "title": "Smart AI Terminal & Logs Filter: Open Filtered Log Panel"
       },
       {
         "command": "smartTerminal.clearLogs",
-        "title": "Smart Terminal: Clear All Logs"
+        "title": "Smart AI Terminal & Logs Filter: Clear All Logs"
       },
       {
         "command": "smartTerminal.toggleCapture",
-        "title": "Smart Terminal: Toggle Log Capture"
+        "title": "Smart AI Terminal & Logs Filter: Toggle Log Capture"
       },
       {
         "command": "smartTerminal.setVerbosity",
-        "title": "Smart Terminal: Set Verbosity Level"
+        "title": "Smart AI Terminal & Logs Filter: Set Verbosity Level"
       },
       {
         "command": "smartTerminal.exportLogs",
-        "title": "Smart Terminal: Export Filtered Logs"
+        "title": "Smart AI Terminal & Logs Filter: Export Filtered Logs"
       },
       {
         "command": "smartTerminal.explainError",
-        "title": "Smart Terminal: AI — Explain Last Error"
+        "title": "Smart AI Terminal & Logs Filter: AI — Explain Last Error"
       },
       {
         "command": "smartTerminal.summarizeLogs",
-        "title": "Smart Terminal: AI — Summarize Recent Logs"
+        "title": "Smart AI Terminal & Logs Filter: AI — Summarize Recent Logs"
       },
       {
         "command": "smartTerminal.queryLogs",
-        "title": "Smart Terminal: AI — Ask a Question About Logs"
+        "title": "Smart AI Terminal & Logs Filter: Ask About Logs"
       },
       {
         "command": "smartTerminal.setApiKey",
-        "title": "Smart Terminal: Set AI API Key"
+        "title": "Smart AI Terminal & Logs Filter: Set AI API Key"
       },
       {
         "command": "smartTerminal.clearApiKey",
-        "title": "Smart Terminal: Clear AI API Key"
+        "title": "Smart AI Terminal & Logs Filter: Clear AI API Key"
+      },
+      {
+        "command": "smartTerminal.openAITerminal",
+        "title": "Smart AI Terminal & Logs Filter: Open AI Terminal",
+        "icon": "$(sparkle)"
       }
     ],
     "viewsContainers": {
       "panel": [
         {
           "id": "smartTerminalContainer",
-          "title": "Smart Terminal",
+          "title": "Smart AI Filter",
           "icon": "$(terminal)"
         }
       ]
@@ -86,14 +91,14 @@
         {
           "type": "webview",
           "id": "smartTerminal.panelView",
-          "name": "Smart Terminal",
-          "contextualTitle": "Smart Terminal Filter",
+          "name": "Smart AI Filter",
+          "contextualTitle": "Smart AI Terminal & Logs Filter",
           "visibility": "visible"
         }
       ]
     },
     "configuration": {
-      "title": "Smart Terminal Filter",
+      "title": "Smart AI Terminal & Logs Filter",
       "properties": {
         "smartTerminal.verbosityLevel": {
           "type": "number",
@@ -162,6 +167,21 @@
           "type": "string",
           "default": "",
           "description": "Custom base URL for Ollama or compatible endpoints"
+        },
+        "smartTerminal.aiTerminal.confirmBeforeExecute": {
+          "type": "boolean",
+          "default": true,
+          "description": "Always show confirmation before executing AI-generated commands"
+        },
+        "smartTerminal.aiTerminal.showExplanation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show plain-English explanation of generated commands"
+        },
+        "smartTerminal.errorSound": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play a funny sound when a terminal command fails with errors"
         }
       }
     },
@@ -170,6 +190,11 @@
         "command": "smartTerminal.openPanel",
         "key": "ctrl+shift+l",
         "mac": "cmd+shift+l"
+      },
+      {
+        "command": "smartTerminal.openAITerminal",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i"
       }
     ],
     "colors": [
